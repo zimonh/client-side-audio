@@ -90,7 +90,9 @@ display: inline-block;
             chunks.push(event.data);
           };
           mediaRecorder.onstop = function() {
-            const blob = new Blob(chunks, { type: navigator.userAgent.toLowerCase().indexOf('safari') != -1 ? 'audio/mp3'  : 'audio/webm' });
+            const platformResolution = ['iPad Simulator','iPhone Simulator','iPod Simulator','iPad','iPhone','iPod'].includes(navigator.platform) || navigator.userAgent.toLowerCase().indexOf('safari') != -1;
+
+            const blob = new Blob(chunks, { type: platformResolution ? 'audio/mp3'  : 'audio/webm' });
             const url = URL.createObjectURL(blob);
             const audio = new Audio(url);
             audio.controls = true;
