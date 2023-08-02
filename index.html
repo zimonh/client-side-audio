@@ -1,0 +1,260 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Audio Recording</title>
+  <style>
+    body {text-align: center;
+      background-color: #c8c8c8;}
+      h1{
+        margin-top: 30vh;
+      }
+    #volumeMeter {
+      display: inline-block;
+      display: none;
+      width: 30px;
+      height: 500px;
+      background-color: #ccc;
+    }
+
+    #volumeLevel {
+      width: 100%;
+      height: 100%;
+      background-color: #0f0;
+
+    }
+    #recordingsList{
+width: 500px;
+display: inline-block;
+    }
+  </style>
+</head>
+<body>
+  <h1>Audio Recording</h1>
+  <button id="startButton">Start Recording</button>
+  <button id="stopButton">Stop Recording</button>
+  <svg id="volumeMeter">
+    <rect id="volumeLevel"></rect>
+  </svg>
+  <br/>
+  <canvas width="500px" heigh="200" id="liveWave"></canvas>
+  <div id="timer">00:00</div>
+  <div id="recordingsList">
+  </div>
+
+  <script>
+    // Request access to the user's microphone
+    navigator.mediaDevices.getUserMedia({ audio: true })
+      .then(function(stream) {
+        // Create a new MediaRecorder instance
+        let mediaRecorder;
+        let chunks = [];
+        let audioContext;
+        let source;
+        let analyser;
+        
+        const volumeMeter = document.getElementById('volumeMeter');
+        const volumeLevel = document.getElementById('volumeLevel');
+        // a canvas element to draw the waveform
+        const canvas = document.getElementById('liveWave');
+        const canvasCtx = canvas.getContext('2d');
+        let fileCount = 0;
+        
+        let startTime;
+        
+        let timerInterval;
+        const svgWidth = 500;
+        const svgHeight = 240;
+
+        volumeLevel.style.height = 1 + '%';
+
+        function storeAverageAmplitude(average, milliseconds) {
+          const key = Math.floor(milliseconds / 30); 
+          // Calculate the key based on the chunk size
+          const storedData = JSON.parse(localStorage.getItem('gen_waveforms')) || [];
+          
+          if (storedData[key]) {
+            storedData[key].avg = (storedData[key].avg * storedData[key].count + average) / (storedData[key].count + 1);
+            storedData[key].count++;
+          } else {
+            storedData[key] = { avg: average, count: 1 };
+          }
+          
+          localStorage.setItem('gen_waveforms', JSON.stringify(storedData));
+        }
+
+        function startRecording() {
+          localStorage.removeItem('gen_waveforms');
+          chunks = [];
+          mediaRecorder = new MediaRecorder(stream);
+          mediaRecorder.ondataavailable = function(event) {
+            chunks.push(event.data);
+          };
+          mediaRecorder.onstop = function() {
+            const blob = new Blob(chunks, { type: 'audio/webm' });
+            const url = URL.createObjectURL(blob);
+            const audio = new Audio(url);
+            audio.controls = true;
+            audio.style.width = '500px';
+
+            const waveforms = JSON.parse(localStorage.getItem('gen_waveforms'));
+            const waveformsCount = waveforms.length;
+
+
+            let svg = document.createElementNS("http://www.w3.org/2000/svg", "svg");
+            svg.setAttribute("width", svgWidth); // Adjust the width as per your requirement
+            svg.setAttribute("height", svgHeight); // Adjust the height as per your requirement
+
+            let x = 0;
+            const incrementSize = svgWidth / waveformsCount;
+            const incrementSizeFixed = incrementSize.toFixed(2);
+
+            for (let waveform of waveforms) {
+              const y = 0; // Adjust the y-coordinate scaling as per your requirement
+
+              const rectHeight = waveform.avg * (svgHeight/200) ; 
+
+              let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+              rect.setAttribute("x", x.toFixed(2));
+              rect.setAttribute("y", ((svgHeight/2) - rectHeight / 2).toFixed(2) + 'px');
+              rect.setAttribute("width", incrementSizeFixed + 'px');
+              rect.setAttribute("height", rectHeight.toFixed(2) + 'px');
+              rect.setAttribute("fill", "rgb("+(rectHeight*6)+",0,0)");
+
+              svg.appendChild(rect);
+              x += incrementSize;
+            }
+            // Append the canvas and audio elements to the recordingsList div
+            const container = document.createElement('div');
+            container.style.background = "#b3b3b3";
+            container.style.textAlign = "left";
+
+            // container.style.display = 'inline-block';
+            fileCount++;
+            const h2 = document.createElement('h2');
+            h2.textContent = fileCount;
+            h2.style.padding = "3px";
+            container.appendChild(h2);
+            container.appendChild(svg);
+            container.appendChild(audio);
+            document.getElementById('recordingsList').prepend(container);
+
+
+          };
+          mediaRecorder.start();
+
+          audioContext = new (window.AudioContext || window.webkitAudioContext)();
+          source = audioContext.createMediaStreamSource(stream);
+          analyser = audioContext.createAnalyser();
+          source.connect(analyser);
+
+          startTime = Date.now();
+          timerInterval = setInterval(updateTimer, 1000);
+          requestAnimationFrame(updateVolumeMeter);
+          requestAnimationFrame(updateLiveWave);
+        }
+
+        function stopRecording() {
+          startTime = Date.now();
+          updateTimer();
+          mediaRecorder.stop();
+          source.disconnect();
+          analyser.disconnect();
+          audioContext.close();
+          clearInterval(timerInterval);
+        }
+
+        function updateVolumeMeter() {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+          const average = getAverageVolume(dataArray);
+          volumeLevel.style.height = average + '%';
+          storeAverageAmplitude(average,  Date.now() - startTime); 
+          requestAnimationFrame(updateVolumeMeter);
+        }
+
+        function updateLiveWave() {
+
+
+          // Get the audio data from the source node
+
+          analyser.fftSize = 2048;
+          const bufferLength = analyser.frequencyBinCount;
+          const dataArray = new Uint8Array(bufferLength);
+
+          canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
+
+          function draw() {
+            requestAnimationFrame(draw);
+            analyser.getByteTimeDomainData(dataArray);
+            canvasCtx.fillStyle = 'rgb(200, 200, 200)';
+            canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
+            canvasCtx.lineWidth = 2;
+            canvasCtx.strokeStyle = 'rgb(0, 0, 0)';
+
+            canvasCtx.beginPath();
+
+            const sliceWidth = canvas.width * 1.0 / bufferLength;
+            let x = 0;
+
+            for (let i = 0; i < bufferLength; i++) {
+              const v = dataArray[i] / 128.0;
+              const y = v * canvas.height / 2;
+
+              if (i === 0) {
+                canvasCtx.moveTo(x, y);
+              } else {
+                canvasCtx.lineTo(x, y);
+              }
+
+              x += sliceWidth;
+            }
+
+            canvasCtx.lineTo(canvas.width, canvas.height / 2);
+            canvasCtx.stroke();
+          }
+
+          draw();
+        };
+
+
+
+        
+        function getAverageVolume(array) {
+          let values = 0;
+          const length = array.length;
+          for (let i = 0; i < length; i++) {
+            values += array[i];
+          }
+          return values / length;
+        }
+
+
+
+
+        function updateTimer() {
+          const elapsedTime = Math.floor((Date.now() - startTime) / 1000);
+          const minutes = Math.floor(elapsedTime / 60);
+          const seconds = elapsedTime % 60;
+          document.getElementById('timer').textContent = padNumber(minutes) + ':' + padNumber(seconds);
+        }
+
+
+
+        function padNumber(number) {
+          return number.toString().padStart(2, '0');
+        }
+
+
+
+        document.getElementById('startButton').addEventListener('click', startRecording);
+        document.getElementById('stopButton').addEventListener('click', stopRecording);
+
+
+
+      })
+      .catch(function(error) {
+        console.error('Error accessing microphone:', error);
+      });
+  </script>
+</body>
+</html>
