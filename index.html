@@ -18,16 +18,22 @@
 
     #volumeMeter {
       display: inline-block;
-      display: none;
-      width: 30px;
-      height: 500px;
+      position: relative; 
+      /*display: none;*/
+      border-radius: 4px;
+      width: 15px;
+      height: 150px;
       background-color: #ccc;
     }
 
     #volumeLevel {
+      margin-top: auto;
       width: 100%;
-      height: 100%;
-      background-color: #0f0;
+position: absolute; 
+
+      border-radius: 4px;
+                    bottom: 0; 
+      background-color: #000;
 
     }
 
@@ -41,12 +47,12 @@
   <h1>Audio Recording</h1>
   <button id="startButton">Start Recording</button>
   <button id="stopButton" style="display: none;">Stop Recording</button>
-  <svg id="volumeMeter">
-    <rect id="volumeLevel"></rect>
-  </svg>
-  <br/>
-  <canvas width="500px" heigh="200" id="liveWave"></canvas>
-  <div id="timer">00:00:00</div>
+  <br>
+  <div id="volumeMeter">
+    <div id="volumeLevel" height="150px"></div>
+  </div>
+  <canvas width="485px" heigh="200" id="liveWave"></canvas>
+  <div id="timer">00:00:00</div><div id="pitch">-</div>
   <div id="recordingsList">
   </div>
 
@@ -54,15 +60,18 @@
     // Request access to the user's microphone
     navigator.mediaDevices.getUserMedia({ audio: true })
       .then(function(stream) {
-
+        let state = 'setup';
         let mediaRecorder;
         let chunks = [];
         let audioContext;
         let source;
         let analyser;
+        let localMaxima = new Array(10);
         
         const volumeMeter = document.getElementById('volumeMeter');
         const volumeLevel = document.getElementById('volumeLevel');
+        const pitch = document.getElementById('pitch');
+
 
         let gen_waveforms = [];
 
@@ -73,6 +82,8 @@
         let startTime;
         
         let timerInterval;
+        let animationLevel;
+        let animationLiveWave;
         const svgWidth = 500;
         const svgHeight = 100;
 
@@ -89,6 +100,7 @@
         }
 
         function startRecording() {
+          state = 'recording';
           document.getElementById('stopButton').style.display = 'inline-block';
           document.getElementById('startButton').style.display = 'none';
           gen_waveforms = [];
@@ -120,11 +132,14 @@
             const incrementSizeFixed = incrementSize.toFixed(2);
 
             for (let waveform of gen_waveforms) {
+              if(waveform === undefined){
+                continue;
+              }
               const y = 0; // Adjust the y-coordinate scaling as per your requirement
 
               const rectHeight = waveform.avg * (svgHeight/90); 
 
-              let rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
+              const rect = document.createElementNS("http://www.w3.org/2000/svg", "rect");
               rect.setAttribute("x", x.toFixed(2));
               rect.setAttribute("y", ((svgHeight/2) - rectHeight / 2).toFixed(2) + 'px');
               rect.setAttribute("width", incrementSizeFixed + 'px');
@@ -161,28 +176,121 @@
 
           startTime = Date.now();
           timerInterval = setInterval(updateTimer, 100);
+          requestAnimationFrame(updateMainFrequency);
           requestAnimationFrame(updateVolumeMeter);
           requestAnimationFrame(updateLiveWave);
         }
 
         function stopRecording() {
+          state = 'stoped';
           mediaRecorder.stop();
           source.disconnect();
           analyser.disconnect();
           audioContext.close();
           clearInterval(timerInterval);
+          cancelAnimationFrame(animationLevel);
+          cancelAnimationFrame(animationLiveWave);
+          console.log(123);
 
           document.getElementById('stopButton').style.display = 'none';
           document.getElementById('startButton').style.display = 'inline-block';
         }
 
+
+
+        function updateMainFrequency() {
+          const dataArray = new Uint8Array(analyser.frequencyBinCount);
+          analyser.getByteFrequencyData(dataArray);
+
+          const sampleRate = audioContext.sampleRate;
+          const minFrequency = sampleRate  / 1024 / 2;
+          const maxFrequency = sampleRate / 2 - minFrequency;
+          const theMaxKey = maxKey(dataArray) + 1;
+          const theMaxKeyOffset = maxKeyOffset(dataArray, theMaxKey);
+          console.log(theMaxKeyOffset, theMaxKey);
+          const theMaxKeyWithOffset = theMaxKey + theMaxKeyOffset;
+          pitch.textContent = (theMaxKeyWithOffset  / 1025 * maxFrequency  - minFrequency + theMaxKeyOffset).toFixed(2) + '㎐';
+          /// looks acurate, ony thing missing is 
+
+          // this can be done by taking nnog the max value 
+
+          // mut the max 4 values and calcuate a fraction.
+          // console.log(sampleRate, minFrequency, maxFrequency, theMaxKey,  pitch.textContent);
+
+          // storeAverageAmplitude(average,  Date.now() - startTime); 
+          if(state === 'recording'){requestAnimationFrame(updateMainFrequency)};
+        }
+
+
+        function maxKey(array) {
+
+          let max = -10000;
+          let maxKey = 0;
+          for (var i = 0; i < array.length; i++) {
+            if(array[i] < max){
+              continue;
+            };
+            max = array[i];
+            maxKey = i;
+
+          }
+          return maxKey;
+        }
+
+        function getAdjustment(first, center, last){
+          const amplitudedConst=32;
+          // const sampleRate = audioContext.sampleRate ;
+          // const minFrequency = sampleRate  / 1024 / 2;
+          // const maxFrequency = sampleRate / 2 - minFrequency;
+
+
+///0: 191   8
+// 1: 200
+// 2: 181   19
+          // const pitchPerChunk = (maxFrequency - minFrequency)/1025;
+
+          const firstToCenter = center - first;
+          const lastToCenter = center - last;
+          const offset = firstToCenter - lastToCenter;
+          // console.log(first, center, last, 1/offset/2);
+   console.log(offset);
+
+          return offset/amplitudedConst/2;
+
+
+
+        }
+        function maxKeyOffset(array, key) {
+          let range = 1;
+          if(key - range < 0){
+            return 0;
+
+          }
+          if(key + range > 1024){
+            return 0;
+          }
+
+          const ranges = [];
+          for (var i = key - range; i <= key + range ; i++) {
+            ranges.push(array[i -1]);
+          }
+           const first = ranges[0];
+          const center = ranges[1];
+          const last = ranges[2];
+
+
+
+          return getAdjustment(first, center, last);
+        }
         function updateVolumeMeter() {
           const dataArray = new Uint8Array(analyser.frequencyBinCount);
           analyser.getByteFrequencyData(dataArray);
+          // console.log(dataArray);
           const average = getAverageVolume(dataArray);
-          volumeLevel.style.height = average + '%';
+          let width = average * 2;
+          volumeLevel.style.height = (width>100? 100 : width) + '%';
           storeAverageAmplitude(average,  Date.now() - startTime); 
-          requestAnimationFrame(updateVolumeMeter);
+          if(state === 'recording'){requestAnimationFrame(updateVolumeMeter)};
         }
 
         function updateLiveWave() {
@@ -193,7 +301,9 @@
           canvasCtx.clearRect(0, 0, canvas.width, canvas.height);
 
           function draw() {
-            requestAnimationFrame(draw);
+            if(state === 'recording'){
+              requestAnimationFrame(draw);
+            }
             analyser.getByteTimeDomainData(dataArray);
             canvasCtx.fillStyle = 'rgb(200, 200, 200)';
             canvasCtx.fillRect(0, 0, canvas.width, canvas.height);
