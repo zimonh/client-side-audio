@@ -52,7 +52,10 @@ position: absolute;
     <div id="volumeLevel" height="150px"></div>
   </div>
   <canvas width="485px" heigh="200" id="liveWave"></canvas>
-  <div id="timer">00:00:00</div><div id="pitch">-</div>
+  <div id="timer">00:00:00</div>
+  <div id="pitch">-</div>
+  <div id="key">-</div>
+  <div id="distance">-</div>
   <div id="recordingsList">
   </div>
 
@@ -71,6 +74,8 @@ position: absolute;
         const volumeMeter = document.getElementById('volumeMeter');
         const volumeLevel = document.getElementById('volumeLevel');
         const pitch = document.getElementById('pitch');
+        const key = document.getElementById('key');
+        const distance = document.getElementById('distance');
 
 
         let gen_waveforms = [];
@@ -78,6 +83,8 @@ position: absolute;
         const canvas = document.getElementById('liveWave');
         const canvasCtx = canvas.getContext('2d');
         let fileCount = 0;
+        const frameSize = 16;
+        let frame = [];
         
         let startTime;
         
@@ -90,12 +97,12 @@ position: absolute;
         volumeLevel.style.height = 1 + '%';
 
         function storeAverageAmplitude(average, milliseconds) {
-          const key = Math.floor(milliseconds / 35); 
-          if (gen_waveforms[key]) {
-            gen_waveforms[key].avg = (gen_waveforms[key].avg * gen_waveforms[key].count + average) / (gen_waveforms[key].count + 1);
-            gen_waveforms[key].count++;
+          const i = Math.floor(milliseconds / 35); 
+          if (gen_waveforms[i]) {
+            gen_waveforms[i].avg = (gen_waveforms[i].avg * gen_waveforms[i].count + average) / (gen_waveforms[i].count + 1);
+            gen_waveforms[i].count++;
           } else {
-            gen_waveforms[key] = { avg: average, count: 1 };
+            gen_waveforms[i] = { avg: average, count: 1 };
           }
         }
 
@@ -207,9 +214,167 @@ position: absolute;
           const maxFrequency = sampleRate / 2 - minFrequency;
           const theMaxKey = maxKey(dataArray) + 1;
           const theMaxKeyOffset = maxKeyOffset(dataArray, theMaxKey);
-          console.log(theMaxKeyOffset, theMaxKey);
+          // console.log(theMaxKeyOffset, theMaxKey);
           const theMaxKeyWithOffset = theMaxKey + theMaxKeyOffset;
-          pitch.textContent = (theMaxKeyWithOffset  / 1025 * maxFrequency  - minFrequency + theMaxKeyOffset).toFixed(2) + '㎐';
+          const hz = theMaxKeyWithOffset  / 1025 * maxFrequency  - minFrequency + theMaxKeyOffset;
+
+
+          if(frame.length >= frameSize){
+           const avgHz  = frame.reduce((a, b) => a + b, 0) / frameSize
+
+
+          pitch.textContent = avgHz.toFixed(2) + '㎐';
+          getNoteNameAndPercentage(avgHz);
+            frame = [hz];
+
+          }
+
+            frame.push(hz);
+
+          
+
+          
+
+
+
+function getNoteNameAndPercentage(hz) {
+  const notes = [
+[16.35, "C0"],
+[17.32, "Db0"],
+[18.35, "D0"],
+[19.45, "Eb0"],
+[20.60, "E0"],
+[21.83, "F0"],
+[23.12, "Gb0"],
+[24.50, "G0"],
+[25.96, "Ab0"],
+[27.50, "A0"],
+[29.14, "Bb0"],
+[30.87, "B0"],
+[32.70, "C1"],
+[34.65, "Db1"],
+[36.71, "D1"],
+[38.89, "Eb1"],
+[41.20, "E1"],
+[43.65, "F1"],
+[46.25, "Gb1"],
+[49.00, "G1"],
+[51.91, "Ab1"],
+[55.00, "A1"],
+[58.27, "Bb1"],
+[61.74, "B1"],
+[65.41, "C2"],
+[69.30, "Db2"],
+[73.42, "D2"],
+[77.78, "Eb2"],
+[82.41, "E2"],
+[87.31, "F2"],
+[92.50, "Gb2"],
+[98.00, "G2"],
+[103.83, "Ab2"],
+[110.00, "A2"],
+[116.54, "Bb2"],
+[123.47, "B2"],
+[130.81, "C3"],
+[138.59, "Db3"],
+[146.83, "D3"],
+[155.56, "Eb3"],
+[164.81, "E3"],
+[174.61, "F3"],
+[185.00, "Gb3"],
+[196.00, "G3"],
+[207.65, "Ab3"],
+[220.00, "A3"],
+[233.08, "Bb3"],
+[246.94, "B3"],
+[261.63, "C4"],
+[277.18, "Db4"],
+[293.66, "D4"],
+[311.13, "Eb4"],
+[329.63, "E4"],
+[349.23, "F4"],
+[369.99, "Gb4"],
+[392.00, "G4"],
+[415.30, "Ab4"],
+[440.00, "A4"],
+[466.16, "Bb4"],
+[493.88, "B4"],
+[523.25, "C5"],
+[554.37, "Db5"],
+[587.33, "D5"],
+[622.25, "Eb5"],
+[659.26, "E5"],
+[698.46, "F5"],
+[739.99, "Gb5"],
+[783.99, "G5"],
+[830.61, "Ab5"],
+[880.00, "A5"],
+[932.33, "Bb5"],
+[987.77, "B5"],
+[1046.50, "C6"],
+[1108.73, "Db6"],
+[1174.66, "D6"],
+[1244.51, "Eb6"],
+[1318.51, "E6"],
+[1396.91, "F6"],
+[1479.98, "Gb6"],
+[1567.98, "G6"],
+[1661.22, "Ab6"],
+[1760.00, "A6"],
+[1864.66, "Bb6"],
+[1975.53, "B6"],
+[2093.00, "C7"],
+[2217.46, "Db7"],
+[2349.32, "D7"],
+[2489.02, "Eb7"],
+[2637.02, "E7"],
+[2793.83, "F7"],
+[2959.96, "Gb7"],
+[3135.96, "G7"],
+[3322.44, "Ab7"],
+[3520.00, "A7"],
+[3729.31, "Bb7"],
+[3951.07, "B7]"],
+];
+let lastKey = 0;
+hz = hz-6;
+for (const hhhh of notes) {
+  if(hhhh[0]>hz){
+
+    const diff =  hhhh[0] - notes[lastKey-1][0]
+
+    const  hzDiff = hz - notes[lastKey-1][0];
+
+
+
+
+            key.textContent = hhhh[1];
+            distance.textContent =  (hzDiff/diff - 0.5).toFixed(2);
+
+
+    return;
+
+
+  }
+  lastKey++;
+ 
+}
+
+
+}
+
+
+
+
+
+
+
+
+
+
+
+
+
           /// looks acurate, ony thing missing is 
 
           // this can be done by taking nnog the max value 
@@ -253,7 +418,7 @@ position: absolute;
           const lastToCenter = center - last;
           const offset = firstToCenter - lastToCenter;
           // console.log(first, center, last, 1/offset/2);
-   console.log(offset);
+   // console.log(offset);
 
           return offset/amplitudedConst/2;
 
